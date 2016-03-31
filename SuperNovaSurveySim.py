@@ -64,7 +64,7 @@ class SyntheticSuperNova(object):
         
     def _GeneratemB(self):
         
-        self.mb_true = self.dm + self.M + self._alpha*self.x1 - self._beta*self.c
+        self.mb_true = self.dm + self.M - self._alpha*self.x1 + self._beta*self.c
         self.mbsd = self._GetPostiveRVS(self._surveymbmu,self._surveymbsd)
         self.mb = stats.norm.rvs(self.mb_true,self.mbsd)
         
