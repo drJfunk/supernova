@@ -24,47 +24,47 @@ def trapezoidal(f, a, b, n,args=[]):
     s += f(b,*args)/2.0
     return s * h
 
-def H(z,Om):
+def H(z,Om,h0):
     
-    h0=72.
+    #h0=72.
     zp=(1+z)
     #Om=.3
     Ode=1-Om -Oo
     return h0 * T.sqrt( T.pow(zp,3) *Om + Ode)
 
-def I_int(z,Om):
+def I_int(z,Om,h0):
     
-    return sol*1E-3/H(z,Om)
+    return sol*1E-3/H(z,Om,h0)
     
     
-def distmod(Om,z):
+def distmod(Om,h0,z):
     
     
     #return (1+z) * quad(I_int,0,z)[0]
-    dl= (1+z) * trapezoidal(I_int,0.,z,N,args=[Om])
+    dl= (1+z) * trapezoidal(I_int,0.,z,N,args=[Om,h0])
     return 5.*T.log10(dl)+25.
 
 
 
-def Hw(z,Om,w):
+def Hw(z,Om,h0,w):
     
-    h0=72.
+    #h0=72.
     zp=(1+z)
     #Om=.3
     Ode=1-Om -Oo
     return h0 * T.sqrt( T.pow(zp,3) *(Oo * zp + Om) 
                        + Ode*T.pow(zp,3.*(1+w ) ) )
 
-def I_intw(z,Om,w):
+def I_intw(z,Om,h0,w):
     
-    return sol.value*1E-3/Hw(z,Om,w)
+    return sol*1E-3/Hw(z,Om,h0,w)
     
     
-def distmodW(Om,w,z):
+def distmodW(Om,h0,w,z):
     
     
     #return (1+z) * quad(I_int,0,z)[0]
-    dl= (1+z) * trapezoidal(I_intw,0.,z,N,args=[Om,w])
+    dl= (1+z) * trapezoidal(I_intw,0.,z,N,args=[Om,h0,w])
     return 5.*T.log10(dl)+25.
 
 

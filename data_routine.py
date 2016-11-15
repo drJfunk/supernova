@@ -29,6 +29,7 @@ def preProcessData(data):
         datum['MagSys'] = ['ab' for a in datum['MagSys']]
     
     #datum['Date'] = datum['Date'] -datum['Date'][0]
+    
     datum = datum[datum['Filter'] != 'SWOPE2::u']   #Maybe change this
     #datum = sncosmo.photdata.standardize_data(datum)
     #datum = sncosmo.photdata.normalize_data(datum)
