@@ -5,7 +5,7 @@ from astropy.constants import c as sol
 from astropy import cosmology
 import numpy as np
 
-cosmo = cosmology.FlatLambdaCDM(H0=68.3, Om0=.3)
+cosmo = cosmology.FlatLambdaCDM(H0=67.3, Om0=.3)
 Or = cosmo.Onu0 + cosmo.Ogamma0
 sol = sol.value
 N = 10
@@ -67,13 +67,35 @@ def distmod_flat_W(Om, h0, w, z):
 def H_curve(z, Om, Ok, h0):
     zp = (1 + z)
     Ode = 1 - Om - Or - Ok
-    return h0 * T.sqrt(zp * zp * ((Or * zp + Om) * zp + Ok) + Ode)
+    return T.sqrt(zp * zp * ((Or * zp + Om) * zp + Ok) + Ode)
 
 
 def I_int_curve(z, Om, Ok, h0):
-    return sol * 1E-3 / H_curve(z, Om, Ok, h0)
+    return 1./ H_curve(z, Om, Ok, h0)
 
 
 def distmod_curve(Om, Ok, h0, z):
-    dl = (1 + z) * trapezoidal(I_int_curve, 0., z, N, args=[Om, Ok, h0])
+
+    dh = sol*1.e-3/h0
+
+    dc = dh*trapezoidal(I_int_curve, 0., z, N, args=[Om, Ok, h0])
+
+    sqrtOk = T.sqrt(Ok)
+
+    if T.eq(Ok,0.):
+
+        dl = (1+z) * dc
+
+
+
+    elif T.gt(Ok,0):
+
+        dl =  (1+z) * dh / sqrtOk * T.sinh(sqrtOk * dc / dh)
+
+    else:
+
+        dl = (1+z) * dh / sqrtOk * T.sin(sqrtOk * dc / dh)
+
+
+
     return 5. * T.log10(dl) + 25.

@@ -210,6 +210,38 @@ class SNBayesModel(object):
 
             self._trace = pm.sample(draws=n_samples, njobs=n_jobs, step=step, start=self._v_params.means)
 
+    def sample_metropolis(self, n_samples=3000, n_jobs=2):
+
+        """
+
+        Sample the bayesian model after ADVI has been computed
+
+        :param n_samples: number of iteration samples
+        :param n_jobs: number of chains to compute
+        """
+        assert self._advi_complete == True, "must run compute_advi for this model"
+
+        with self._model:
+            step = pm.Metropolis()
+
+            self._trace = pm.sample(draws=n_samples,njobs=n_jobs, step=step, start=self._v_params.means)
+
+    def sample_slice(self, n_samples=3000, n_jobs=2):
+
+        """
+
+        Sample the bayesian model after ADVI has been computed
+
+        :param n_samples: number of iteration samples
+        :param n_jobs: number of chains to compute
+        """
+        assert self._advi_complete == True, "must run compute_advi for this model"
+
+        with self._model:
+            step = pm.Slice()
+
+            self._trace = pm.sample(draws=n_samples, njobs=n_jobs, step=step, start=self._v_params.means)
+
     @property
     def trace(self):
         """
