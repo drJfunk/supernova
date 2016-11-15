@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import theano
 import theano.tensor as T
 import pymc3 as pm
-from cosmo import distmod, distmodW
+from cosmo import distmod_flat, distmod_flat_W, distmod_curve
 from astropy.table import Table
 
 
@@ -67,31 +67,31 @@ class SNBayesModel(object):
 
     @property
     def zcmb(self):
-        return self._zcmb.get_values()
+        return self._zcmb.get_value()
 
     @property
     def color(self):
-        return self._color.get_values()
+        return self._color.get_value()
 
     @property
     def dcolor(self):
-        return self._dcolor.get_values()
+        return self._dcolor.get_value()
 
     @property
     def x1(self):
-        return self._x1.get_values()
+        return self._x1.get_value()
 
     @property
     def dx1(self):
-        return self._dx1.get_values()
+        return self._dx1.get_value()
 
     @property
     def mb_obs(self):
-        return self._mb_obs.get_values()
+        return self._mb_obs.get_value()
 
     @property
     def dmb_obs(self):
-        return self._dmb_obs.get_values()
+        return self._dmb_obs.get_value()
 
     @property
     def survey_number(self):
@@ -99,11 +99,11 @@ class SNBayesModel(object):
 
     @property
     def log_host_mass(self):
-        return self._log_host_mass.get_values()
+        return self._log_host_mass.get_value()
 
     @property
     def dlog_host_mass(self):
-        return self._dlog_host_mass.get_values()
+        return self._dlog_host_mass.get_value()
 
     @property
     def data_set(self):
@@ -171,7 +171,7 @@ class SNBayesModel(object):
 
         self._dmbObs_survey = np.array(dmbObs_survey)
 
-    def compute_advi(self, n_samples=100000, verbose=False):
+    def compute_advi(self, n_samples=100000,verbose=False,**kwargs):
 
         """
 
@@ -180,10 +180,11 @@ class SNBayesModel(object):
 
         :param n_samples: the number of ADVI samples to compute
         :param verbose: print ADVI steps and plot the ELBO curve
+        :param learning_rate: default is 1E-2 but for complex models it is good to increase this
         """
         with self._model:
 
-            self._v_params = pm.variational.advi(n=n_samples, verbose=verbose)
+            self._v_params = pm.variational.advi(n=n_samples, verbose=verbose,**kwargs)
 
             if verbose:
 
@@ -279,10 +280,9 @@ class SNBayesModel(object):
         ax.set_xlabel('redshift (z)')
 
         ax.set_ylabel('color')
+        ax.set_xscale('log')
 
         return fig
-
-
 
 
 class BaseLineModel(SNBayesModel):
@@ -296,8 +296,7 @@ class BaseLineModel(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC sampling.
 
-            dm = distmod(omega_m, self._h0, self._zcmb)
-
+            dm = distmod_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -345,6 +344,67 @@ class BaseLineModel(SNBayesModel):
             obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
+class BaseLineModelCurvature(SNBayesModel):
+    def _model_setup(self):
+        with self._model:
+            # COSMOLOGY
+
+
+            omega_m = pm.Uniform("OmegaM", lower=0,  upper=1.)
+            omega_k = pm.Uniform("OmegaK", lower=-1, upper=1.)
+
+            # My custom distance mod. function to enable
+            # ADVI and HMC sampling.
+
+            dm = distmod_curve(omega_m, omega_k, self._h0, self._zcmb)
+
+            # PHILIPS PARAMETERS
+
+            # M0 is the location parameter for the distribution
+            # sys_scat is the scale parameter for the M0 distribution
+            # rather than "unexpalined variance"
+            M0 = pm.Normal("M0", mu=-19.3, sd=2.)
+            sys_scat = pm.HalfCauchy('sys_scat', beta=2.5)  # Gelman recommendation for variance parameter
+            M_true = pm.Normal('M_true', M0, sys_scat, shape=self._n_SN)
+
+            # following Rubin's Unity model... best idea? not sure
+            taninv_alpha = pm.Uniform("taninv_alpha", lower=-.2, upper=.3)
+            taninv_beta = pm.Uniform("taninv_beta", lower=-1.4, upper=1.4)
+
+            # Transform variables
+            alpha = pm.Deterministic('alpha', T.tan(taninv_alpha))
+            beta = pm.Deterministic('beta', T.tan(taninv_beta))
+
+            # Again using Rubin's Unity model.
+            # After discussion with Rubin, the idea is that
+            # these parameters are ideally sampled from a Gaussian,
+            # but we know they are not entirely correct. So instead,
+            # the Cauchy is less informative around the mean, while
+            # still having informative tails.
+
+            xm = pm.Cauchy('xm', alpha=0, beta=1)
+            cm = pm.Cauchy('cm', alpha=0, beta=1)
+
+            Rx_log = pm.Uniform('Rx_log', lower=-0.5, upper=0.5)
+            Rc_log = pm.Uniform('Rc_log', lower=-1.5, upper=1.5)
+
+            # Transformed variables
+            Rx = pm.Deterministic("Rx", T.pow(10., Rx_log))
+            Rc = pm.Deterministic("Rc", T.pow(10., Rc_log))
+
+            x_true = pm.Normal('x_true', mu=xm, sd=Rx, shape=self._n_SN)
+            c_true = pm.Normal('c_true', mu=cm, sd=Rc, shape=self._n_SN)
+
+            # Do the correction
+            mb = pm.Deterministic("mb", M_true + dm - alpha * x_true + beta * c_true)
+
+            # Likelihood and measurement error
+
+            obsc = pm.Normal("obsc", mu=c_true, sd=self._dcolor, observed=self._color)
+            obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
+            obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
+
+
 
 class BaseLineModelW(SNBayesModel):
     def _model_setup(self):
@@ -360,7 +420,7 @@ class BaseLineModelW(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmodW(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -421,7 +481,7 @@ class HostMassCovariateCorrection(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmod(omega_m, self._h0, self._zcmb)
+            dm = distmod_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -494,7 +554,7 @@ class HostMassCovariateCorrectionW(SNBayesModel):
             # My custom distance mod. function to enable 
             # ADVI and HMC smapling.
 
-            dm = distmodW(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -565,7 +625,7 @@ class BaseLineModelWithRedshiftCorrection(SNBayesModel):
             # ADVI and HMC smapling.
 
 
-            dm = distmod(omega_m, self._h0, self._zcmb)
+            dm = distmod_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -634,7 +694,7 @@ class BaseLineModelWithRedshiftCorrectionW(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmodW(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -696,8 +756,6 @@ class PopulationColorCorrection(SNBayesModel):
 
             omega_m = pm.Uniform("OmegaM", lower=0, upper=1.)
 
-
-
             # My custom distance mod. function to enable
             # ADVI and HMC sampling.
 
@@ -706,12 +764,10 @@ class PopulationColorCorrection(SNBayesModel):
             #  We are going to have to break this into
             #  four likelihoods
 
-            dm_0 = distmod(omega_m,self._h0,self._zcmb_survey[0])
-            dm_1 = distmod(omega_m,self._h0,self._zcmb_survey[1])
-            dm_2 = distmod(omega_m,self._h0,self._zcmb_survey[2])
-            dm_3 = distmod(omega_m,self._h0,self._zcmb_survey[3])
-
-
+            dm_0 = distmod_flat(omega_m, self._h0, self._zcmb_survey[0])
+            dm_1 = distmod_flat(omega_m, self._h0, self._zcmb_survey[1])
+            dm_2 = distmod_flat(omega_m, self._h0, self._zcmb_survey[2])
+            dm_3 = distmod_flat(omega_m, self._h0, self._zcmb_survey[3])
 
             # PHILIPS PARAMETERS
 
@@ -793,6 +849,112 @@ class PopulationColorCorrection(SNBayesModel):
             obsx_3 = pm.Normal("obsx_3", mu=x_true_3, sd=self._dx1_survey[3], observed=self._x1_survey[3])
             obsm_3 = pm.Normal("obsm_3", mu=mb_3, sd=self._dmbObs_survey[3], observed=self._mbObs_survey[3])
 
+
+
+class PopulationColorCorrectionCurvature(SNBayesModel):
+    def _model_setup(self):
+        with self._model:
+            # COSMOLOGY
+
+
+            omega_m = pm.Uniform("OmegaM", lower=0., upper=1.)
+            omega_k = pm.Uniform("Omegak", lower=-1., upper=1.)
+
+            # My custom distance mod. function to enable
+            # ADVI and HMC sampling.
+
+
+
+            #  We are going to have to break this into
+            #  four likelihoods
+
+            dm_0 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[0])
+            dm_1 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[1])
+            dm_2 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[2])
+            dm_3 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[3])
+
+            # PHILIPS PARAMETERS
+
+            # M0 is the location parameter for the distribution
+            # sys_scat is the scale parameter for the M0 distribution
+            # rather than "unexpalined variance"
+            M0 = pm.Uniform("M0", lower=-20., upper=-18.)
+            sys_scat = pm.HalfCauchy('sys_scat', beta=2.5)  # Gelman recommendation for variance parameter
+
+            M_true_0 = pm.Normal('M_true_0', M0, sys_scat, shape=self._n_SN_survey[0])
+            M_true_1 = pm.Normal('M_true_1', M0, sys_scat, shape=self._n_SN_survey[1])
+            M_true_2 = pm.Normal('M_true_2', M0, sys_scat, shape=self._n_SN_survey[2])
+            M_true_3 = pm.Normal('M_true_3', M0, sys_scat, shape=self._n_SN_survey[3])
+
+            # following Rubin's Unity model... best idea? not sure
+            taninv_alpha = pm.Uniform("taninv_alpha", lower=-.2, upper=.3)
+            taninv_beta = pm.Uniform("taninv_beta", lower=-1.4, upper=1.4)
+
+            # Transform variables
+            alpha = pm.Deterministic('alpha', T.tan(taninv_alpha))
+            beta = pm.Deterministic('beta', T.tan(taninv_beta))
+
+            # Again using Rubin's Unity model.
+            # After discussion with Rubin, the idea is that
+            # these parameters are ideally sampled from a Gaussian,
+            # but we know they are not entirely correct. So instead,
+            # the Cauchy is less informative around the mean, while
+            # still having informative tails.
+
+            xm = pm.Cauchy('xm', alpha=0, beta=1)
+
+            cm = pm.Cauchy('cm', alpha=0, beta=1, shape=4)
+
+            s = pm.Uniform('s', lower=-2, upper=2, shape=4)
+
+            c_shift_0 = cm[0] + s[0] * self._zcmb_survey[0]
+            c_shift_1 = cm[1] + s[1] * self._zcmb_survey[1]
+            c_shift_2 = cm[2] + s[2] * self._zcmb_survey[2]
+            c_shift_3 = cm[3] + s[3] * self._zcmb_survey[3]
+
+            Rx_log = pm.Uniform('Rx_log', lower=-0.5, upper=0.5)
+            Rc_log = pm.Uniform('Rc_log', lower=-1.5, upper=1.5, shape=4)
+
+            # Transformed variables
+            Rx = pm.Deterministic("Rx", T.pow(10., Rx_log))
+
+            Rc = pm.Deterministic("Rc", T.pow(10., Rc_log))
+
+            x_true_0 = pm.Normal('x_true_0', mu=xm, sd=Rx, shape=self._n_SN_survey[0])
+            c_true_0 = pm.Normal('c_true_0', mu=c_shift_0, sd=Rc[0], shape=self._n_SN_survey[0])
+            x_true_1 = pm.Normal('x_true_1', mu=xm, sd=Rx, shape=self._n_SN_survey[1])
+            c_true_1 = pm.Normal('c_true_1', mu=c_shift_1, sd=Rc[1], shape=self._n_SN_survey[1])
+            x_true_2 = pm.Normal('x_true_2', mu=xm, sd=Rx, shape=self._n_SN_survey[2])
+            c_true_2 = pm.Normal('c_true_2', mu=c_shift_2, sd=Rc[2], shape=self._n_SN_survey[2])
+            x_true_3 = pm.Normal('x_true_3', mu=xm, sd=Rx, shape=self._n_SN_survey[3])
+            c_true_3 = pm.Normal('c_true_3', mu=c_shift_3, sd=Rc[3], shape=self._n_SN_survey[3])
+
+            # Do the correction
+            mb_0 = pm.Deterministic("mb_0", M_true_0 + dm_0 - alpha * x_true_0 + beta * c_true_0)
+            mb_1 = pm.Deterministic("mb_1", M_true_1 + dm_1 - alpha * x_true_1 + beta * c_true_1)
+            mb_2 = pm.Deterministic("mb_2", M_true_2 + dm_2 - alpha * x_true_2 + beta * c_true_2)
+            mb_3 = pm.Deterministic("mb_3", M_true_3 + dm_3 - alpha * x_true_3 + beta * c_true_3)
+
+            # Likelihood and measurement error
+
+            obsc_0 = pm.Normal("obsc_0", mu=c_true_0, sd=self._dcolor_survey[0], observed=self._color_survey[0])
+            obsx_0 = pm.Normal("obsx_0", mu=x_true_0, sd=self._dx1_survey[0], observed=self._x1_survey[0])
+            obsm_0 = pm.Normal("obsm_0", mu=mb_0, sd=self._dmbObs_survey[0], observed=self._mbObs_survey[0])
+
+            obsc_1 = pm.Normal("obsc_1", mu=c_true_1, sd=self._dcolor_survey[1], observed=self._color_survey[1])
+            obsx_1 = pm.Normal("obsx_1", mu=x_true_1, sd=self._dx1_survey[1], observed=self._x1_survey[1])
+            obsm_1 = pm.Normal("obsm_1", mu=mb_1, sd=self._dmbObs_survey[1], observed=self._mbObs_survey[1])
+
+            obsc_2 = pm.Normal("obsc_2", mu=c_true_2, sd=self._dcolor_survey[2], observed=self._color_survey[2])
+            obsx_2 = pm.Normal("obsx_2", mu=x_true_2, sd=self._dx1_survey[2], observed=self._x1_survey[2])
+            obsm_2 = pm.Normal("obsm_2", mu=mb_2, sd=self._dmbObs_survey[2], observed=self._mbObs_survey[2])
+
+            obsc_3 = pm.Normal("obsc_3", mu=c_true_3, sd=self._dcolor_survey[3], observed=self._color_survey[3])
+            obsx_3 = pm.Normal("obsx_3", mu=x_true_3, sd=self._dx1_survey[3], observed=self._x1_survey[3])
+            obsm_3 = pm.Normal("obsm_3", mu=mb_3, sd=self._dmbObs_survey[3], observed=self._mbObs_survey[3])
+
+
+
 class PopulationColorCorrectionW(SNBayesModel):
     def _model_setup(self):
         with self._model:
@@ -814,10 +976,10 @@ class PopulationColorCorrectionW(SNBayesModel):
 
 
 
-            dm_0 = distmodW(omega_m, self._h0, w, self._zcmb_survey[0])
-            dm_1 = distmodW(omega_m, self._h0, w, self._zcmb_survey[1])
-            dm_2 = distmodW(omega_m, self._h0, w, self._zcmb_survey[2])
-            dm_3 = distmodW(omega_m, self._h0, w, self._zcmb_survey[3])
+            dm_0 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[0])
+            dm_1 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[1])
+            dm_2 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[2])
+            dm_3 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[3])
 
             # PHILIPS PARAMETERS
 
