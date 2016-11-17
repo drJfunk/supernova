@@ -1,44 +1,41 @@
 __author__ = 'drjfunk'
 
 import theano.tensor as T
+from theano.ifelse import ifelse
+
 from astropy.constants import c as sol
 from astropy import cosmology
-import numpy as np
 
+from integration_routines import gauss_kronrod
+
+
+# this sets up the radiation content
 cosmo = cosmology.FlatLambdaCDM(H0=67.3, Om0=.3)
 Or = cosmo.Onu0 + cosmo.Ogamma0
 sol = sol.value
-N = 10
-
-loop = range(1, N)
-
-
-def trapezoidal(f, a, b, n, args=[]):
-    h = (b - a) / n
-
-    s = 0.0
-    s += f(a, *args) / 2.0
-    for i in loop:
-        s += f(a + i * h, *args)
-    s += f(b, *args) / 2.0
-    return s * h
 
 
 def H_flat(z, Om, h0):
-    # h0=72.
     zp = (1 + z)
-    # Om=.3
     Ode = 1 - Om - Or
     return h0 * T.sqrt(T.pow(zp, 3) * Om + Ode)
 
 
-def I_int(z, Om, h0):
-    return sol * 1E-3 / H_flat(z, Om, h0)
+def I_int(z, Om):
+    zp = (1 + z)
+    Ode = 1 - Om - Or
+    return  T.power(T.pow(zp, 3) * Om + Ode, -0.5)
+
 
 
 def distmod_flat(Om, h0, z):
-    # return (1+z) * quad(I_int,0,z)[0]
-    dl = (1 + z) * trapezoidal(I_int, 0., z, N, args=[Om, h0])
+
+
+    dh = sol * 1.e-3 / h0
+
+    dc = dh * gauss_kronrod(I_int, z, parameters=[Om])
+
+    dl = (1 + z) * dc
     return 5. * T.log10(dl) + 25.
 
 
@@ -52,12 +49,23 @@ def Hw_flat(z, Om, h0, w):
                        + Ode * T.pow(zp, 3. * (1 + w)))
 
 
-def I_intw(z, Om, h0, w):
-    return sol * 1E-3 / Hw_flat(z, Om, h0, w)
+def I_intw(z, Om, w):
+    zp = (1 + z)
+    Ode = 1 - Om - Or
+    return T.power((T.pow(zp, 3) * (Or * zp + Om)
+                       + Ode * T.pow(zp, 3. * (1 + w))),-0.5)
+
 
 
 def distmod_flat_W(Om, h0, w, z):
-    dl = (1 + z) * trapezoidal(I_intw, 0., z, N, args=[Om, h0, w])
+
+
+    dh = sol * 1.e-3 / h0
+
+    dc = dh * gauss_kronrod(I_intw,z, parameters=[Om, w])
+    dl = (1+z) * dc
+
+
     return 5. * T.log10(dl) + 25.
 
 
@@ -70,31 +78,41 @@ def H_curve(z, Om, Ok, h0):
     return T.sqrt(zp * zp * ((Or * zp + Om) * zp + Ok) + Ode)
 
 
-def I_int_curve(z, Om, Ok, h0):
-    return 1./ H_curve(z, Om, Ok, h0)
+
+
+def I_int_curve(z, Om, Ok):
+    zp = (1 + z)
+    Ode = 1 - Om - Or - Ok
+    return T.power(zp * zp * ((Or * zp + Om) * zp + Ok) + Ode,-0.5)
+
 
 
 def distmod_curve(Om, Ok, h0, z):
 
-    dh = sol*1.e-3/h0
 
-    dc = dh*trapezoidal(I_int_curve, 0., z, N, args=[Om, Ok, h0])
+    dh = sol * 1.e-3 / h0
 
-    sqrtOk = T.sqrt(Ok)
-
-    if T.eq(Ok,0.):
-
-        dl = (1+z) * dc
+    dc = dh * gauss_kronrod(I_int_curve, z, parameters=[Om, Ok])
 
 
 
-    elif T.gt(Ok,0):
+    sqrtOk = T.sqrt(T.abs_(Ok))
 
-        dl =  (1+z) * dh / sqrtOk * T.sinh(sqrtOk * dc / dh)
 
-    else:
 
-        dl = (1+z) * dh / sqrtOk * T.sin(sqrtOk * dc / dh)
+    dl =  ifelse(T.eq(Ok,0.),
+                 (1+z) * dc,
+                 0. * (1+z) * dc)
+
+
+    dl +=  ifelse(T.gt(Ok,0),
+                 (1+z) * dh / sqrtOk * T.sinh(sqrtOk * dc / dh),
+                 0. * (1+z) * dc)
+
+    dl += ifelse(T.lt(Ok,0),
+                (1+z) * dh / sqrtOk * T.sin(sqrtOk * dc / dh),
+                0. * (1+z) * dc)
+
 
 
 
