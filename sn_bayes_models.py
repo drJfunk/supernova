@@ -12,13 +12,19 @@ from astropy.table import Table
 
 class SNBayesModel(object):
     def __init__(self, sn_table):
-
-        assert isinstance(sn_table, Table), "sn_table must be an astropy Table instance"
-
         """
+        Super class for all supernova models. Variable storage from JLA data sets is done in the
+        super class. An astropy table using the JLA parameters must be provided.
 
         :param sn_table: An astropy Table containing the proper columns w.r.t the JLA data set
         """
+
+        assert isinstance(sn_table, Table), "sn_table must be an astropy Table instance"
+
+        # First we make all the JLA parameters shared to theano.
+        # They can be accessed as properties which return numpy
+        # arrays
+
         self._h0 = 67.3  # Planck
 
         self._zcmb = theano.shared(sn_table['zcmb'])
@@ -37,6 +43,9 @@ class SNBayesModel(object):
 
         self._survey = sn_table['set']
 
+        # Just in case there are not host masses in the data set
+        # we make sure there is an exception
+
         try:
 
             self._log_host_mass = theano.shared(sn_table['3rdvar'])
@@ -51,16 +60,22 @@ class SNBayesModel(object):
 
         self._n_SN = len(sn_table)
 
+        # For plotting
         self._survey_map = {1: "SNLS", 2: "SDSS", 3: "low-z", 4: "Riess HST"}
 
         self._data_set = sn_table
 
+        # Some models will want to fit the different surveys with
+        # their own parameters, so we create this data set
         self._create_subsurvey_set()
 
+        # generate a pymc3 model
         self._model = pm.Model()
 
+        # The inheriting model will define the setup
         self._model_setup()
 
+        # Just to make sure things are done properly
         self._advi_complete = False
 
         self._trace = None
@@ -116,6 +131,11 @@ class SNBayesModel(object):
         pass
 
     def _create_subsurvey_set(self):
+        """
+        Creates the sub-survey data sets
+
+        :return: None
+        """
 
         zcmb_survey = []
 
@@ -155,6 +175,9 @@ class SNBayesModel(object):
 
             n_SN_survey.append(sum(this_survey))
 
+        # I'm not going to share the sub surveys because theano indexing doesn't work the
+        # same as numpy
+
         self._n_SN_survey = np.array(n_SN_survey)
 
         self._zcmb_survey = np.array(zcmb_survey)
@@ -171,7 +194,7 @@ class SNBayesModel(object):
 
         self._dmbObs_survey = np.array(dmbObs_survey)
 
-    def compute_advi(self, n_samples=100000,verbose=False,**kwargs):
+    def compute_advi(self, n_samples=100000, verbose=False, **kwargs):
 
         """
 
@@ -184,7 +207,7 @@ class SNBayesModel(object):
         """
         with self._model:
 
-            self._v_params = pm.variational.advi(n=n_samples, verbose=verbose,**kwargs)
+            self._v_params = pm.variational.advi(n=n_samples, verbose=verbose, **kwargs)
 
             if verbose:
 
@@ -224,22 +247,6 @@ class SNBayesModel(object):
         with self._model:
             step = pm.Metropolis()
 
-            self._trace = pm.sample(draws=n_samples,njobs=n_jobs, step=step, start=self._v_params.means)
-
-    def sample_slice(self, n_samples=3000, n_jobs=2):
-
-        """
-
-        Sample the bayesian model after ADVI has been computed
-
-        :param n_samples: number of iteration samples
-        :param n_jobs: number of chains to compute
-        """
-        assert self._advi_complete == True, "must run compute_advi for this model"
-
-        with self._model:
-            step = pm.Slice()
-
             self._trace = pm.sample(draws=n_samples, njobs=n_jobs, step=step, start=self._v_params.means)
 
     @property
@@ -255,7 +262,7 @@ class SNBayesModel(object):
 
     def plot_data(self, plot_errors=True):
         """
-
+        Plots the distance moduli
 
         :return: fig
         """
@@ -286,7 +293,7 @@ class SNBayesModel(object):
 
     def plot_color(self, plot_errors=True):
         """
-
+        Plots the color shift as a function of redshift
 
         :return: fig
         """
@@ -376,13 +383,14 @@ class BaseLineModel(SNBayesModel):
             obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
+
 class BaseLineModelCurvature(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
 
 
-            omega_m = pm.Uniform("OmegaM", lower=0,  upper=1.)
+            omega_m = pm.Uniform("OmegaM", lower=0, upper=1.)
             omega_k = pm.Uniform("OmegaK", lower=-1, upper=1.)
 
             # My custom distance mod. function to enable
@@ -435,7 +443,6 @@ class BaseLineModelCurvature(SNBayesModel):
             obsc = pm.Normal("obsc", mu=c_true, sd=self._dcolor, observed=self._color)
             obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
-
 
 
 class BaseLineModelW(SNBayesModel):
@@ -882,7 +889,6 @@ class PopulationColorCorrection(SNBayesModel):
             obsm_3 = pm.Normal("obsm_3", mu=mb_3, sd=self._dmbObs_survey[3], observed=self._mbObs_survey[3])
 
 
-
 class PopulationColorCorrectionCurvature(SNBayesModel):
     def _model_setup(self):
         with self._model:
@@ -984,7 +990,6 @@ class PopulationColorCorrectionCurvature(SNBayesModel):
             obsc_3 = pm.Normal("obsc_3", mu=c_true_3, sd=self._dcolor_survey[3], observed=self._color_survey[3])
             obsx_3 = pm.Normal("obsx_3", mu=x_true_3, sd=self._dx1_survey[3], observed=self._x1_survey[3])
             obsm_3 = pm.Normal("obsm_3", mu=mb_3, sd=self._dmbObs_survey[3], observed=self._mbObs_survey[3])
-
 
 
 class PopulationColorCorrectionW(SNBayesModel):
