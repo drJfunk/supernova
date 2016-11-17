@@ -323,6 +323,38 @@ class SNBayesModel(object):
 
         return fig
 
+    def plot_x1(self, plot_errors=True):
+        """
+        Plots the lightcurve stretch as a function of redshift
+
+        :return: fig
+        """
+
+        fig, ax = plt.subplots()
+        for survey in [1, 2, 3, 4]:
+
+            survey_condition = self._data_set['set'] == survey
+
+            if plot_errors:
+
+                ax.errorbar(self._data_set[survey_condition]['zcmb'], self._data_set[survey_condition]['x1'],
+                            yerr=self._data_set[survey_condition]['dx1'], fmt='.',
+                            label=self._survey_map[survey], alpha=.7)
+
+            else:
+
+                ax.plot(self._data_set[survey_condition]['zcmb'], self._data_set[survey_condition]['x1'], '.',
+                        label=self._survey_map[survey], alpha=.7)
+
+        ax.legend(loc=4)
+
+        ax.set_xlabel('redshift (z)')
+
+        ax.set_ylabel('x1')
+        ax.set_xscale('log')
+
+        return fig
+
 
 class BaseLineModel(SNBayesModel):
     def _model_setup(self):
