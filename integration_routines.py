@@ -2,6 +2,10 @@ import theano.tensor as T
 import theano
 import numpy as np
 
+
+
+# gauss nodes
+
 kronrod = np.array([-0.991455371120812639207, -0.949107912342758524526, -0.86486442335976907279,
            -0.7415311855993944398639, -0.5860872354676911302941, -0.4058451513773971669066,
            -0.2077849550078984676007, 0.0, 0.2077849550078984676007, 0.4058451513773971669066,
@@ -48,6 +52,14 @@ wgauss_shared = theano.shared(wgauss)
 
 
 def gauss_kronrod(function, upper_interval, parameters=[]):
+    """
+
+
+    :param function: function to be integrated
+    :param upper_interval: upper bound of integral (0-upper_interval)
+    :param parameters: list of additional parameters to function
+    :return:
+    """
 
 
     # for the cosmology, a is always 0
@@ -66,7 +78,7 @@ def gauss_kronrod(function, upper_interval, parameters=[]):
 
 
 
-
+# Old integration routines
 
 
 N = 10

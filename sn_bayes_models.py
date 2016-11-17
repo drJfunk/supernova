@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import theano
 import theano.tensor as T
 import pymc3 as pm
-from cosmo import distmod_flat, distmod_flat_W, distmod_curve
+from cosmo import distmod_constant_flat, distmod_w_flat, distmod_constant_curve
 from astropy.table import Table
 
 
@@ -328,7 +328,7 @@ class BaseLineModel(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC sampling.
 
-            dm = distmod_flat(omega_m, self._h0, self._zcmb)
+            dm = distmod_constant_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -388,7 +388,7 @@ class BaseLineModelCurvature(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC sampling.
 
-            dm = distmod_curve(omega_m, omega_k, self._h0, self._zcmb)
+            dm = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -452,7 +452,7 @@ class BaseLineModelW(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_w_flat(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -513,7 +513,7 @@ class HostMassCovariateCorrection(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmod_flat(omega_m, self._h0, self._zcmb)
+            dm = distmod_constant_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -586,7 +586,7 @@ class HostMassCovariateCorrectionW(SNBayesModel):
             # My custom distance mod. function to enable 
             # ADVI and HMC smapling.
 
-            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_w_flat(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -657,7 +657,7 @@ class BaseLineModelWithRedshiftCorrection(SNBayesModel):
             # ADVI and HMC smapling.
 
 
-            dm = distmod_flat(omega_m, self._h0, self._zcmb)
+            dm = distmod_constant_flat(omega_m, self._h0, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -726,7 +726,7 @@ class BaseLineModelWithRedshiftCorrectionW(SNBayesModel):
             # My custom distance mod. function to enable
             # ADVI and HMC smapling.
 
-            dm = distmod_flat_W(omega_m, self._h0, w, self._zcmb)
+            dm = distmod_w_flat(omega_m, self._h0, w, self._zcmb)
 
             # PHILIPS PARAMETERS
 
@@ -796,10 +796,10 @@ class PopulationColorCorrection(SNBayesModel):
             #  We are going to have to break this into
             #  four likelihoods
 
-            dm_0 = distmod_flat(omega_m, self._h0, self._zcmb_survey[0])
-            dm_1 = distmod_flat(omega_m, self._h0, self._zcmb_survey[1])
-            dm_2 = distmod_flat(omega_m, self._h0, self._zcmb_survey[2])
-            dm_3 = distmod_flat(omega_m, self._h0, self._zcmb_survey[3])
+            dm_0 = distmod_constant_flat(omega_m, self._h0, self._zcmb_survey[0])
+            dm_1 = distmod_constant_flat(omega_m, self._h0, self._zcmb_survey[1])
+            dm_2 = distmod_constant_flat(omega_m, self._h0, self._zcmb_survey[2])
+            dm_3 = distmod_constant_flat(omega_m, self._h0, self._zcmb_survey[3])
 
             # PHILIPS PARAMETERS
 
@@ -900,10 +900,10 @@ class PopulationColorCorrectionCurvature(SNBayesModel):
             #  We are going to have to break this into
             #  four likelihoods
 
-            dm_0 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[0])
-            dm_1 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[1])
-            dm_2 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[2])
-            dm_3 = distmod_curve(omega_m, omega_k, self._h0, self._zcmb_survey[3])
+            dm_0 = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb_survey[0])
+            dm_1 = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb_survey[1])
+            dm_2 = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb_survey[2])
+            dm_3 = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb_survey[3])
 
             # PHILIPS PARAMETERS
 
@@ -1008,10 +1008,10 @@ class PopulationColorCorrectionW(SNBayesModel):
 
 
 
-            dm_0 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[0])
-            dm_1 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[1])
-            dm_2 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[2])
-            dm_3 = distmod_flat_W(omega_m, self._h0, w, self._zcmb_survey[3])
+            dm_0 = distmod_w_flat(omega_m, self._h0, w, self._zcmb_survey[0])
+            dm_1 = distmod_w_flat(omega_m, self._h0, w, self._zcmb_survey[1])
+            dm_2 = distmod_w_flat(omega_m, self._h0, w, self._zcmb_survey[2])
+            dm_3 = distmod_w_flat(omega_m, self._h0, w, self._zcmb_survey[3])
 
             # PHILIPS PARAMETERS
 
