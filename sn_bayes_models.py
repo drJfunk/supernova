@@ -355,8 +355,8 @@ class SNBayesModel(object):
 
         return fig
 
-
-class BaseLineModel(SNBayesModel):
+# Baseline models
+class BaseLineModelFlat(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -477,7 +477,7 @@ class BaseLineModelCurvature(SNBayesModel):
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
 
-class BaseLineModelW(SNBayesModel):
+class BaseLineModelFlatW(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -540,7 +540,8 @@ class BaseLineModelW(SNBayesModel):
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
 
-class HostMassCovariateCorrection(SNBayesModel):
+# Host mass models
+class HostMassCovariateCorrectionFlat(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -610,7 +611,7 @@ class HostMassCovariateCorrection(SNBayesModel):
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
 
-class HostMassCovariateCorrectionW(SNBayesModel):
+class HostMassCovariateCorrectionFlatW(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -682,8 +683,8 @@ class HostMassCovariateCorrectionW(SNBayesModel):
             obsMg = pm.Normal("obsMg", mu=Mg_true, sd=self._dlog_host_mass, observed=self._log_host_mass)
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
-
-class BaseLineModelWithRedshiftCorrection(SNBayesModel):
+# Redshift Correction models
+class BaseLineModelWithRedshiftCorrectionFlat(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -749,8 +750,75 @@ class BaseLineModelWithRedshiftCorrection(SNBayesModel):
             obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
+class BaseLineModelWithRedshiftCorrectionCurvature(SNBayesModel):
+    def _model_setup(self):
+        with self._model:
+            # COSMOLOGY
 
-class BaseLineModelWithRedshiftCorrectionW(SNBayesModel):
+
+
+            omega_m = pm.Uniform("OmegaM", lower=0, upper=1.)
+            omega_k = pm.Uniform("OmegaK", lower=-1, upper=1.)
+
+            # My custom distance mod. function to enable
+            # ADVI and HMC sampling.
+
+            dm = distmod_constant_curve(omega_m, omega_k, self._h0, self._zcmb)
+
+
+
+            # PHILIPS PARAMETERS
+
+            # M0 is the location parameter for the distribution
+            # sys_scat is the scale parameter for the M0 distribution
+            # rather than "unexpalined variance"
+            M0 = pm.Uniform("M0", lower=-20., upper=-18.)
+            sys_scat = pm.HalfCauchy('sys_scat', beta=2.5)  # Gelman recommendation for variance parameter
+            M_true = pm.Normal('M_true', M0, sys_scat, shape=self._n_SN)
+
+            # following Rubin's Unity model... best idea? not sure
+            taninv_alpha = pm.Uniform("taninv_alpha", lower=-.2, upper=.3)
+            taninv_beta = pm.Uniform("taninv_beta", lower=-1.4, upper=1.4)
+
+            # Transform variables
+            alpha = pm.Deterministic('alpha', T.tan(taninv_alpha))
+            beta = pm.Deterministic('beta', T.tan(taninv_beta))
+
+            # Z correction parameters
+            delta_beta = pm.Uniform('delta_beta', lower=-1.5, upper=1.5)
+            zt = pm.Uniform('zt', lower=0.2, upper=1)
+
+            # Again using Rubin's Unity model.
+            # After discussion with Rubin, the idea is that
+            # these parameters are ideally sampled from a Gaussian,
+            # but we know they are not entirely correct. So instead,
+            # the Cauchy is less informative around the mean, while
+            # still having informative tails.
+
+            xm = pm.Cauchy('xm', alpha=0, beta=1)
+            cm = pm.Cauchy('cm', alpha=0, beta=1)
+
+            Rx_log = pm.Uniform('Rx_log', lower=-0.5, upper=0.5)
+            Rc_log = pm.Uniform('Rc_log', lower=-1.5, upper=1.5)
+
+            # Transformed variables
+            Rx = pm.Deterministic("Rx", T.pow(10., Rx_log))
+            Rc = pm.Deterministic("Rc", T.pow(10., Rc_log))
+
+            x_true = pm.Normal('x_true', mu=xm, sd=Rx, shape=self._n_SN)
+            c_true = pm.Normal('c_true', mu=cm, sd=Rc, shape=self._n_SN)
+
+            # Do the correction
+            mb = pm.Deterministic("mb", M_true + dm - alpha * x_true + beta * c_true + delta_beta * (
+                0.5 + 1. / np.pi * T.arctan((self._zcmb - zt) / 0.01)) * c_true)
+
+            # Likelihood and measurement error
+
+            obsc = pm.Normal("obsc", mu=c_true, sd=self._dcolor, observed=self._color)
+            obsx = pm.Normal("obsx", mu=x_true, sd=self._dx1, observed=self._x1)
+            obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
+
+class BaseLineModelWithRedshiftCorrectionFlatW(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -819,7 +887,9 @@ class BaseLineModelWithRedshiftCorrectionW(SNBayesModel):
             obsm = pm.Normal("obsm", mu=mb, sd=self._dmb_obs, observed=self._mb_obs)
 
 
-class PopulationColorCorrection(SNBayesModel):
+# Population correction models
+
+class PopulationColorCorrectionFlat(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
@@ -1024,7 +1094,7 @@ class PopulationColorCorrectionCurvature(SNBayesModel):
             obsm_3 = pm.Normal("obsm_3", mu=mb_3, sd=self._dmbObs_survey[3], observed=self._mbObs_survey[3])
 
 
-class PopulationColorCorrectionW(SNBayesModel):
+class PopulationColorCorrectionFlatW(SNBayesModel):
     def _model_setup(self):
         with self._model:
             # COSMOLOGY
